@@ -1,36 +1,31 @@
-package com.sherdle.universal.util.RadioPlayerService;
+package co.mobiwise.library.radio;
 
-/**
- * Created by imac on 01/11/2016.
- */
+import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.AudioTrack;
+import android.os.AsyncTask;
+import android.os.Binder;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.IBinder;
+import android.telephony.PhoneStateListener;
+import android.telephony.TelephonyManager;
+import android.util.Log;
+import android.widget.RemoteViews;
 
+import com.spoledge.aacdecoder.MultiPlayer;
+import com.spoledge.aacdecoder.PlayerCallback;
 
-        import android.app.Activity;
-        import android.app.Notification;
-        import android.app.NotificationManager;
-        import android.app.PendingIntent;
-        import android.app.Service;
-        import android.content.Intent;
-        import android.graphics.Bitmap;
-        import android.graphics.BitmapFactory;
-        import android.media.AudioTrack;
-        import android.os.AsyncTask;
-        import android.os.Binder;
-        import android.os.Build;
-        import android.os.Bundle;
-        import android.os.IBinder;
-        import android.telephony.PhoneStateListener;
-        import android.telephony.TelephonyManager;
-        import android.util.Log;
-        import android.widget.RemoteViews;
+import java.util.ArrayList;
+import java.util.List;
 
-        import com.spoledge.aacdecoder.MultiPlayer;
-        import com.spoledge.aacdecoder.PlayerCallback;
-
-        import java.util.ArrayList;
-        import java.util.List;
-
-        import co.mobiwise.library.R;
+import co.mobiwise.library.R;
 
 
 /**
