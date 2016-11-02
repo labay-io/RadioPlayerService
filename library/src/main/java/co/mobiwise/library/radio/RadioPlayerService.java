@@ -209,10 +209,9 @@ public class RadioPlayerService extends Service implements PlayerCallback {
             }  else if (mRadioUrl != null)
                 play(mRadioUrl);
         } else if (action.equals(NOTIFICATION_INTENT_OPEN_PLAYER)) {
-            Log.v("INFO", "Check: " + notificationBundle.toString());
             Intent openIntent = new Intent(this, notificationActivity.getClass());
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            intent.putExtras(notificationBundle);
+            openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            openIntent.putExtras(notificationBundle);
             startActivity(openIntent);
         }
 
