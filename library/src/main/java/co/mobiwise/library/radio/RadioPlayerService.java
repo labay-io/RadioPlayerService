@@ -41,9 +41,20 @@ public class RadioPlayerService extends Service implements PlayerCallback {
     /**
      * Notification action intent strings
      */
-    private static final String NOTIFICATION_INTENT_PLAY_PAUSE = "co.mobiwise.library.notification.radio.INTENT_PLAYPAUSE";
-    private static final String NOTIFICATION_INTENT_CANCEL = "co.mobiwise.library.notification.radio.INTENT_CANCEL";
-    private static final String NOTIFICATION_INTENT_OPEN_PLAYER = "co.mobiwise.library.notification.radio.INTENT_OPENPLAYER";
+    public static final String NOTIFICATION_INTENT_PLAY_PAUSE = "co.mobiwise.library.notification.radio.INTENT_PLAYPAUSE";
+
+    public static final String NOTIFICATION_INTENT_CANCEL = "co.mobiwise.library.notification.radio.INTENT_CANCEL";
+
+    public static final String NOTIFICATION_INTENT_OPEN_PLAYER = "co.mobiwise.library.notification.radio.INTENT_OPENPLAYER";
+
+    /**
+     * Notification current values
+     */
+    private String singerName = "";
+    private String songName = "";
+    private int smallImage = R.drawable.default_art;
+    private Bitmap artImage;
+
     /**
      * Notification ID
      */
@@ -298,6 +309,17 @@ public class RadioPlayerService extends Service implements PlayerCallback {
         return false;
     }
 
+    public void resume(){
+        if(mRadioUrl != null)
+            play(mRadioUrl);
+    }
+
+    public void stopFromNotification(){
+        isClosedFromNotification = true;
+        if(mNotificationManager != null) mNotificationManager.cancelAll();
+        stop();
+    }
+
     @Override
     public void playerPCMFeedBuffer(boolean b, int i, int i1) {
         //Empty
@@ -490,9 +512,9 @@ public class RadioPlayerService extends Service implements PlayerCallback {
         /**
          * Pending intents
          */
-        PendingIntent playPausePending = PendingIntent.getService(this, 0, intentPlayPause, 0);
-        PendingIntent openPending = PendingIntent.getService(this, 0, intentOpenPlayer, 0);
-        PendingIntent cancelPending = PendingIntent.getService(this, 0, intentCancel, 0);
+        PendingIntent playPausePending = PendingIntent.getBroadcast(this, 23, intentPlayPause, 0);
+        PendingIntent openPending = PendingIntent.getBroadcast(this, 31, intentOpenPlayer, 0);
+        PendingIntent cancelPending = PendingIntent.getBroadcast(this, 12, intentCancel, 0);
 
         /**
          * Remote view for normal view
@@ -517,7 +539,6 @@ public class RadioPlayerService extends Service implements PlayerCallback {
          */
         mNotificationTemplate.setOnClickPendingIntent(R.id.notification_collapse, cancelPending);
         mNotificationTemplate.setOnClickPendingIntent(R.id.notification_play, playPausePending);
-
 
         /**
          * Create notification instance
@@ -551,6 +572,7 @@ public class RadioPlayerService extends Service implements PlayerCallback {
 
         if (mNotificationManager != null)
             mNotificationManager.notify(NOTIFICATION_ID, notification);
+
     }
 
     public void cancelNotification(){
