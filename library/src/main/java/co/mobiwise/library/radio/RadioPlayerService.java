@@ -1,5 +1,6 @@
 package co.mobiwise.library.radio;
 
+import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -14,6 +15,7 @@ import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
@@ -58,6 +60,11 @@ import co.mobiwise.library.R;
 public class RadioPlayerService extends Service implements ExoPlayer.EventListener{
 
     /**
+     * Stop action. If another mediaplayer will start.It needs
+     * to send broadcast to stop this service.
+     */
+    public static final String ACTION_MEDIAPLAYER_STOP = "co.mobiwise.library.ACTION_STOP_MEDIAPLAYER";
+    /**
      * Notification action intent strings
      */
     public static final String NOTIFICATION_INTENT_PLAY_PAUSE = "co.mobiwise.library.notification.radio.INTENT_PLAYPAUSE";
@@ -67,46 +74,45 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
     public static final String NOTIFICATION_INTENT_OPEN_PLAYER = "co.mobiwise.library.notification.radio.INTENT_OPENPLAYER";
 
     /**
-     * Notification current values
-     */
-    private String singerName = "";
-    private String songName = "";
-    private int smallImage = R.drawable.default_art;
-    private Bitmap artImage;
-
-    /**
      * Notification ID
      */
     private static final int NOTIFICATION_ID = 001;
-
     /**
      * Logging control variable
      */
     private static boolean isLogging = false;
-
+    /**
+     * Binder
+     */
+    public final IBinder mLocalBinder = new LocalBinder();
+    /**
+     * Radio buffer and decode capacity(DEFAULT VALUES)
+     */
+    private final int AUDIO_BUFFER_CAPACITY_MS = 800;
+    private final int AUDIO_DECODE_CAPACITY_MS = 400;
     /**
      * Stream url suffix
      */
     private final String SUFFIX_PLS = ".pls";
     private final String SUFFIX_RAM = ".ram";
     private final String SUFFIX_WAX = ".wax";
-
-    /**
-     * State enum for Radio Player state (IDLE, PLAYING, STOPPED, INTERRUPTED)
-     */
-    public enum State {
-        IDLE,
-        PLAYING,
-        STOPPED,
-    }
-
     List<RadioListener> mListenerList;
-
+    /**
+     * Notification current values
+     */
+    private String singerName = "";
+    private String songName = "";
+    private int smallImage = R.drawable.default_art;
+    private Bitmap artImage;
+    /**
+     * Notification intent
+     */
+    private Activity notificationActivity;
+    private Bundle notificationBundle;
     /**
      * Radio State
      */
     private State mRadioState;
-
     /**
      * Current radio URL
      */
@@ -117,8 +123,6 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
      * to send broadcast to stop this service.
      */
     public static final String ACTION_MEDIAPLAYER_STOP = "co.mobiwise.library.ACTION_STOP_MEDIAPLAYER";
-
-
     /**
      * Exo player properties
      */
@@ -148,27 +152,61 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
     private boolean isInterrupted;
 
     /**
+     * Notification will be shown if this
+     * value set true;
+     */
+    private boolean isNotificationEnabled = true;
+
+    /**
+     * If play method is called repeatedly, AAC Decoder will be failed.
+     * play and stop methods will be turned mLock = true when they called,
+     *
+     * @onRadioStarted and @onRadioStopped methods will be release lock.
+     */
+    private boolean mLock;
+    PhoneStateListener phoneStateListener = new PhoneStateListener() {
+        @Override
+        public void onCallStateChanged(int state, String incomingNumber) {
+            if (state == TelephonyManager.CALL_STATE_RINGING) {
+
+                /**
+                 * Stop radio and set interrupted if it is playing on incoming call.
+                 */
+                if (isPlaying()) {
+                    isInterrupted = true;
+                    stop();
+                }
+
+            } else if (state == TelephonyManager.CALL_STATE_IDLE) {
+
+                /**
+                 * Keep playing if it is interrupted.
+                 */
+                if (isInterrupted)
+                    play(mRadioUrl);
+
+            } else if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
+
+                /**
+                 * Stop radio and set interrupted if it is playing on outgoing call.
+                 */
+                if (isPlaying()) {
+                    isInterrupted = true;
+                    stop();
+                }
+
+            }
+            super.onCallStateChanged(state, incomingNumber);
+        }
+    };
+    /**
      * Notification manager
      */
     private NotificationManager mNotificationManager;
 
-    /**
-     * Binder
-     */
-    public final IBinder mLocalBinder = new LocalBinder();
-
     @Override
     public IBinder onBind(Intent intent) {
         return mLocalBinder;
-    }
-
-    /**
-     * Binder
-     */
-    public class LocalBinder extends Binder {
-        public RadioPlayerService getService() {
-            return RadioPlayerService.this;
-        }
     }
 
     /**
@@ -193,19 +231,25 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
                 isClosedFromNotification = true;
                 stop();
             }
-            if (mNotificationManager != null)
-                mNotificationManager.cancel(NOTIFICATION_ID);
+            cancelNotification();
         }
         /**
          * If play/pause action clicked on notification,
          * Check player state and stop/play streaming.
          */
         else if (action.equals(NOTIFICATION_INTENT_PLAY_PAUSE)) {
-            if (isPlaying())
+            if (isPlaying()) {
                 stop();
-            else if (mRadioUrl != null)
+            }  else if (mRadioUrl != null)
                 play(mRadioUrl);
-
+        } else if (action.equals(NOTIFICATION_INTENT_OPEN_PLAYER)) {
+            if (notificationActivity != null){
+                Intent openIntent = new Intent(this, notificationActivity.getClass());
+                openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (notificationBundle != null)
+                    openIntent.putExtras(notificationBundle);
+                startActivity(openIntent);
+            }
         }
 
         return START_NOT_STICKY;
@@ -251,17 +295,67 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
     }
 
     public void stop() {
+
         radioPlayer.setPlayWhenReady(false);
+        if (!mLock && mRadioState != State.STOPPED) {
+            log("Stop requested.");
+            mLock = true;
+            getPlayer().stop();
+        }
+    }
+
+    @Override
+    public void playerStarted() {
+        mRadioState = State.PLAYING;
+        if (isNotificationEnabled)
+            buildNotification();
+        mLock = false;
+        notifyRadioStarted();
+
+        log("Player started. tate : " + mRadioState);
+
+        if (isInterrupted)
+            isInterrupted = false;
+
+    }
+
+    public boolean isPlaying() {
+        if (State.PLAYING == mRadioState)
+            return true;
+        return false;
+    }
+
+    public void resume(){
+        if(mRadioUrl != null)
+            play(mRadioUrl);
+    }
+
+    public void stopFromNotification(){
+        isClosedFromNotification = true;
+        if(mNotificationManager != null) mNotificationManager.cancelAll();
+        stop();
+    }
+
+    @Override
+    public void playerPCMFeedBuffer(boolean b, int i, int i1) {
+        //Empty
+    }
+
+    @Override
+    public void playerStopped(int i) {
         mRadioState = State.STOPPED;
 
         /**
          * If player stopped from notification then dont
          * call buildNotification().
          */
-        if (!isClosedFromNotification)
-            buildNotification();
-        else
+        if (!isClosedFromNotification) {
+            if (isNotificationEnabled) {
+                buildNotification();
+            }
+        } else {
             isClosedFromNotification = false;
+        }
 
         notifyRadioStopped();
     }
@@ -277,10 +371,17 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
             play(mRadioUrl);
     }
 
+
     public void stopFromNotification() {
         isClosedFromNotification = true;
         if (mNotificationManager != null) mNotificationManager.cancelAll();
         stop();
+    @Override
+    public void playerAudioTrackCreated(AudioTrack audiotrack) {
+        int audioSessionId = audiotrack.getAudioSessionId();
+        for (RadioListener mRadioListener : mListenerList) {
+            mRadioListener.onAudioSessionId(audioSessionId);
+        }
     }
 
     public void registerListener(RadioListener mListener) {
@@ -320,6 +421,13 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
     }
 
     /**
+     * Return the radio url
+     */
+    public String getRadioUrl(){
+        return mRadioUrl;
+    }
+
+    /**
      * Return AAC player. If it is not initialized, creates and returns.
      *
      * @return MultiPlayer
@@ -339,42 +447,6 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
 
         return radioPlayer;
     }
-
-    PhoneStateListener phoneStateListener = new PhoneStateListener() {
-        @Override
-        public void onCallStateChanged(int state, String incomingNumber) {
-            if (state == TelephonyManager.CALL_STATE_RINGING) {
-
-                /**
-                 * Stop radio and set interrupted if it is playing on incoming call.
-                 */
-                if (isPlaying()) {
-                    isInterrupted = true;
-                    stop();
-                }
-
-            } else if (state == TelephonyManager.CALL_STATE_IDLE) {
-
-                /**
-                 * Keep playing if it is interrupted.
-                 */
-                if (isInterrupted)
-                    play(mRadioUrl);
-
-            } else if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-
-                /**
-                 * Stop radio and set interrupted if it is playing on outgoing call.
-                 */
-                if (isPlaying()) {
-                    isInterrupted = true;
-                    stop();
-                }
-
-            }
-            super.onCallStateChanged(state, incomingNumber);
-        }
-    };
 
     /**
      * Check supported suffix
@@ -505,21 +577,33 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
 
     }
 
+    public void cancelNotification(){
+        if (mNotificationManager != null) {
+            mNotificationManager.cancel(NOTIFICATION_ID);
+        }
+    }
+
+    public void setNotificationOpenIntent(Activity activity, Bundle bundle){
+        this.notificationBundle = bundle;
+        this.notificationActivity = activity;
+    }
+
     public void updateNotification(String singerName, String songName, int smallImage, int artImage) {
         this.singerName = singerName;
         this.songName = songName;
         this.smallImage = smallImage;
         this.artImage = BitmapFactory.decodeResource(getResources(), artImage);
-        buildNotification();
+        if (isNotificationEnabled)
+            buildNotification();
     }
-
 
     public void updateNotification(String singerName, String songName, int smallImage, Bitmap artImage) {
         this.singerName = singerName;
         this.songName = songName;
         this.smallImage = smallImage;
         this.artImage = artImage;
-        buildNotification();
+        if (isNotificationEnabled)
+            buildNotification();
     }
 
     @Override
@@ -571,5 +655,25 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
 
     }
 
+    public void enableNotification(boolean isEnabled) {
+        isNotificationEnabled = isEnabled;
+    }
 
+    /**
+     * State enum for Radio Player state (IDLE, PLAYING, STOPPED, INTERRUPTED)
+     */
+    public enum State {
+        IDLE,
+        PLAYING,
+        STOPPED,
+    }
+
+    /**
+     * Binder
+     */
+    public class LocalBinder extends Binder {
+        public RadioPlayerService getService() {
+            return RadioPlayerService.this;
+        }
+    }
 }
