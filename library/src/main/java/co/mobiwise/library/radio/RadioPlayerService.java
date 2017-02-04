@@ -60,11 +60,6 @@ import co.mobiwise.library.R;
 public class RadioPlayerService extends Service implements ExoPlayer.EventListener{
 
     /**
-     * Stop action. If another mediaplayer will start.It needs
-     * to send broadcast to stop this service.
-     */
-    public static final String ACTION_MEDIAPLAYER_STOP = "co.mobiwise.library.ACTION_STOP_MEDIAPLAYER";
-    /**
      * Notification action intent strings
      */
     public static final String NOTIFICATION_INTENT_PLAY_PAUSE = "co.mobiwise.library.notification.radio.INTENT_PLAYPAUSE";
@@ -359,13 +354,7 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
 
         notifyRadioStopped();
     }
-
-    public boolean isPlaying() {
-        if (State.PLAYING == mRadioState)
-            return true;
-        return false;
-    }
-
+    
     public void resume() {
         if (mRadioUrl != null)
             play(mRadioUrl);
