@@ -371,11 +371,6 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
             play(mRadioUrl);
     }
 
-
-    public void stopFromNotification() {
-        isClosedFromNotification = true;
-        if (mNotificationManager != null) mNotificationManager.cancelAll();
-        stop();
     @Override
     public void playerAudioTrackCreated(AudioTrack audiotrack) {
         int audioSessionId = audiotrack.getAudioSessionId();
