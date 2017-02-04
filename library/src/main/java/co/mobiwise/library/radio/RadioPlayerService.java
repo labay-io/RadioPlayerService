@@ -326,7 +326,7 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
         stop();
     }
 
-    @Override
+    /**@Override
     public void playerPCMFeedBuffer(boolean b, int i, int i1) {
         //Empty
     }
@@ -335,10 +335,10 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
     public void playerStopped(int i) {
         mRadioState = State.STOPPED;
 
-        /**
+        **
          * If player stopped from notification then dont
          * call buildNotification().
-         */
+         *
         if (!isClosedFromNotification) {
             if (isNotificationEnabled) {
                 buildNotification();
@@ -348,20 +348,20 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
         }
 
         notifyRadioStopped();
-    }
+    }**/
     
     public void resume() {
         if (mRadioUrl != null)
             play(mRadioUrl);
     }
 
-    @Override
+    /**@Override
     public void playerAudioTrackCreated(AudioTrack audiotrack) {
         int audioSessionId = audiotrack.getAudioSessionId();
         for (RadioListener mRadioListener : mListenerList) {
             mRadioListener.onAudioSessionId(audioSessionId);
         }
-    }
+    }**/
 
     public void registerListener(RadioListener mListener) {
         mListenerList.add(mListener);
