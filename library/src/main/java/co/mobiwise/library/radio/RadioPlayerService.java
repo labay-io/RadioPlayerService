@@ -48,14 +48,6 @@ public class RadioPlayerService extends Service implements PlayerCallback {
     public static final String NOTIFICATION_INTENT_OPEN_PLAYER = "co.mobiwise.library.notification.radio.INTENT_OPENPLAYER";
 
     /**
-     * Notification current values
-     */
-    private String singerName = "";
-    private String songName = "";
-    private int smallImage = R.drawable.default_art;
-    private Bitmap artImage;
-
-    /**
      * Notification ID
      */
     private static final int NOTIFICATION_ID = 001;
