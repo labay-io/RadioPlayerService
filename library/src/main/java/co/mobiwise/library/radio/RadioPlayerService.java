@@ -9,29 +9,55 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.AudioTrack;
+import android.media.RemoteControlClient;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
+import android.util.Base64;
 import android.util.Log;
 import android.widget.RemoteViews;
 
-import com.spoledge.aacdecoder.MultiPlayer;
-import com.spoledge.aacdecoder.PlayerCallback;
-
+import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.ExoPlaybackException;
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.ExoPlayerFactory;
+import com.google.android.exoplayer2.LoadControl;
+import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.Timeline;
+import com.google.android.exoplayer2.metadata.Metadata;
+import com.google.android.exoplayer2.metadata.MetadataDecoder;
+import com.google.android.exoplayer2.metadata.id3.Id3Decoder;
+import com.google.android.exoplayer2.source.MediaSource;
+import com.google.android.exoplayer2.source.TrackGroup;
+import com.google.android.exoplayer2.source.TrackGroupArray;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.trackselection.AdaptiveVideoTrackSelection;
+import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
+import com.google.android.exoplayer2.trackselection.TrackSelection;
+import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
+import com.google.android.exoplayer2.trackselection.TrackSelector;
+import com.google.android.exoplayer2.upstream.BandwidthMeter;
+import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
+import com.google.android.exoplayer2.util.Util;
 import java.util.ArrayList;
 import java.util.List;
 
 import co.mobiwise.library.R;
 
 
+
 /**
  * Created by mertsimsek on 01/07/15.
  */
-public class RadioPlayerService extends Service implements PlayerCallback {
+public class RadioPlayerService extends Service implements ExoPlayer.EventListener{
 
     /**
      * Stop action. If another mediaplayer will start.It needs
@@ -91,22 +117,27 @@ public class RadioPlayerService extends Service implements PlayerCallback {
      * Current radio URL
      */
     private String mRadioUrl;
+
     /**
-     * AAC Radio Player
+     * Stop action. If another mediaplayer will start.It needs
+     * to send broadcast to stop this service.
      */
-    private MultiPlayer mRadioPlayer;
+    public static final String ACTION_MEDIAPLAYER_STOP = "co.mobiwise.library.ACTION_STOP_MEDIAPLAYER";
+    /**
+     * Exo player properties
+     */
+    private SimpleExoPlayer radioPlayer;
+    private Handler mainHandler;
+    private BandwidthMeter bandwidthMeter;
+    private TrackSelection.Factory defaultTrackSelectionFactory;
+    private TrackSelector trackSelector;
+    private LoadControl loadControl;
+    private DataSource.Factory dataSourceFactory;
 
     /**
      * Will be controlled on incoming calls and stop and start player.
      */
     private TelephonyManager mTelephonyManager;
-
-    /**
-     * While current radio playing, if you give another play command with different
-     * source, you need to stop it first. This value is responsible for control
-     * after radio stopped.
-     */
-    private boolean isSwitching;
 
     /**
      * If closed from notification, it will be checked
@@ -231,9 +262,7 @@ public class RadioPlayerService extends Service implements PlayerCallback {
         mListenerList = new ArrayList<>();
 
         mRadioState = State.IDLE;
-        isSwitching = false;
         isInterrupted = false;
-        mLock = false;
         getPlayer();
 
         mTelephonyManager = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
@@ -249,6 +278,9 @@ public class RadioPlayerService extends Service implements PlayerCallback {
      * @param mRadioUrl
      */
     public void play(String mRadioUrl) {
+        MediaSource mediaSource = new HlsMediaSource(Uri.parse(mRadioUrl), dataSourceFactory, mainHandler, null);
+        radioPlayer.setPlayWhenReady(false);
+        radioPlayer.prepare(mediaSource);
 
         sendBroadcast(new Intent(ACTION_MEDIAPLAYER_STOP));
 
@@ -258,21 +290,13 @@ public class RadioPlayerService extends Service implements PlayerCallback {
             decodeStremLink(mRadioUrl);
         else {
             this.mRadioUrl = mRadioUrl;
-            isSwitching = false;
-
-            if (isPlaying()) {
-                log("Switching Radio");
-                isSwitching = true;
-                stop();
-            } else if (!mLock) {
-                log("Play requested.");
-                mLock = true;
-                getPlayer().playAsync(mRadioUrl);
-            }
+            radioPlayer.setPlayWhenReady(true);
         }
     }
 
     public void stop() {
+
+        radioPlayer.setPlayWhenReady(false);
         if (!mLock && mRadioState != State.STOPPED) {
             log("Stop requested.");
             mLock = true;
@@ -319,7 +343,6 @@ public class RadioPlayerService extends Service implements PlayerCallback {
 
     @Override
     public void playerStopped(int i) {
-
         mRadioState = State.STOPPED;
 
         /**
@@ -334,30 +357,25 @@ public class RadioPlayerService extends Service implements PlayerCallback {
             isClosedFromNotification = false;
         }
 
-        mLock = false;
         notifyRadioStopped();
-        log("Player stopped. State : " + mRadioState);
+    }
 
-        if (isSwitching)
+    public boolean isPlaying() {
+        if (State.PLAYING == mRadioState)
+            return true;
+        return false;
+    }
+
+    public void resume() {
+        if (mRadioUrl != null)
             play(mRadioUrl);
-
-
     }
 
-    @Override
-    public void playerException(Throwable throwable) {
-        mLock = false;
-        mRadioPlayer = null;
-        getPlayer();
-        notifyErrorOccured();
-        log("ERROR OCCURED.");
-    }
 
-    @Override
-    public void playerMetadata(String s, String s2) {
-        notifyMetaDataChanged(s, s2);
-    }
-
+    public void stopFromNotification() {
+        isClosedFromNotification = true;
+        if (mNotificationManager != null) mNotificationManager.cancelAll();
+        stop();
     @Override
     public void playerAudioTrackCreated(AudioTrack audiotrack) {
         int audioSessionId = audiotrack.getAudioSessionId();
@@ -414,28 +432,20 @@ public class RadioPlayerService extends Service implements PlayerCallback {
      *
      * @return MultiPlayer
      */
-    private MultiPlayer getPlayer() {
-        try {
+    private SimpleExoPlayer getPlayer() {
 
-            java.net.URL.setURLStreamHandlerFactory(new java.net.URLStreamHandlerFactory() {
-
-                public java.net.URLStreamHandler createURLStreamHandler(String protocol) {
-                    Log.d("LOG", "Asking for stream handler for protocol: '" + protocol + "'");
-                    if ("icy".equals(protocol))
-                        return new com.spoledge.aacdecoder.IcyURLStreamHandler();
-                    return null;
-                }
-            });
-        } catch (Throwable t) {
-            Log.w("LOG", "Cannot set the ICY URLStreamHandler - maybe already set ? - " + t);
+        if (radioPlayer == null) {
+            mainHandler = new Handler();
+            bandwidthMeter = new DefaultBandwidthMeter();
+            defaultTrackSelectionFactory = new AdaptiveVideoTrackSelection.Factory(bandwidthMeter);
+            trackSelector = new DefaultTrackSelector(defaultTrackSelectionFactory);
+            loadControl = new DefaultLoadControl();
+            radioPlayer = ExoPlayerFactory.newSimpleInstance(this, trackSelector, loadControl);
+            dataSourceFactory = new DefaultDataSourceFactory(this, Util.getUserAgent(this, "mediaPlayerSample"));
+            radioPlayer.addListener(this);
         }
 
-        if (mRadioPlayer == null) {
-            mRadioPlayer = new MultiPlayer(this, AUDIO_BUFFER_CAPACITY_MS, AUDIO_DECODE_CAPACITY_MS);
-            mRadioPlayer.setResponseCodeCheckEnabled(false);
-            mRadioPlayer.setPlayerCallback(this);
-        }
-        return mRadioPlayer;
+        return radioPlayer;
     }
 
     /**
@@ -594,6 +604,55 @@ public class RadioPlayerService extends Service implements PlayerCallback {
         this.artImage = artImage;
         if (isNotificationEnabled)
             buildNotification();
+    }
+
+    @Override
+    public void onTimelineChanged(Timeline timeline, Object manifest) {
+
+    }
+
+    @Override
+    public void onTracksChanged(TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
+        for (int i = 0; i < trackGroups.length; i++) {
+            TrackGroup trackGroup = trackGroups.get(i);
+            for (int j = 0; j < trackGroup.length; j++) {
+                Metadata trackMetadata = trackGroup.getFormat(j).metadata;
+                if (trackMetadata != null) {
+
+                }
+            }
+        }
+
+    }
+
+    @Override
+    public void onLoadingChanged(boolean isLoading) {
+
+    }
+
+    @Override
+    public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+
+        if(playbackState == ExoPlayer.STATE_READY){
+
+            mRadioState = State.PLAYING;
+            buildNotification();
+            notifyRadioStarted();
+
+            if (isInterrupted)
+                isInterrupted = false;
+        }
+
+    }
+
+    @Override
+    public void onPlayerError(ExoPlaybackException error) {
+        Log.v("TEST", "ERRORRR : " + error.getMessage());
+    }
+
+    @Override
+    public void onPositionDiscontinuity() {
+
     }
 
     public void enableNotification(boolean isEnabled) {
