@@ -299,7 +299,7 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
         }
     }
 
-    @Override
+    /**@Override
     public void playerStarted() {
         mRadioState = State.PLAYING;
         if (isNotificationEnabled)
@@ -312,7 +312,7 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
         if (isInterrupted)
             isInterrupted = false;
 
-    }
+    }**/
 
     public boolean isPlaying() {
         if (State.PLAYING == mRadioState)
