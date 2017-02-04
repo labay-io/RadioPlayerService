@@ -320,11 +320,6 @@ public class RadioPlayerService extends Service implements ExoPlayer.EventListen
         return false;
     }
 
-    public void resume(){
-        if(mRadioUrl != null)
-            play(mRadioUrl);
-    }
-
     public void stopFromNotification(){
         isClosedFromNotification = true;
         if(mNotificationManager != null) mNotificationManager.cancelAll();
