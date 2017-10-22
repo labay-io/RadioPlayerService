@@ -49,7 +49,7 @@ public class RadioManager implements IRadioManager {
   /**
    * notification enabled/disabled control
    */
-  private boolean isEnabled = true;
+  private boolean isEnabled = false;
   /**
    * Connection
    */
